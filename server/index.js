@@ -1,5 +1,5 @@
-const { toHex, utf8ToBytes } = require("ethereum-cryptography/utils");
-const { keccak256 } = require("ethereum-cryptography/keccak");
+const {toHex, utf8ToBytes} = require("ethereum-cryptography/utils");
+const {keccak256} = require("ethereum-cryptography/keccak");
 const secp = require("ethereum-cryptography/secp256k1");
 
 
@@ -12,61 +12,63 @@ app.use(cors());
 app.use(express.json());
 
 const balances = {
-  "0x9e6549c43dea3ea114e832edc8b28046f1e9835be4bec310bcf2c8990831299b": 100,
-  "0x9f01954fa8f054c3979878010f95319bf63f50a0941568c31616c5ef937399fa": 50,
-  "0x627918ed762db591a2917dcd1b49c884de79866cde9f90cd5b4f7b29c0dc8aae": 75,
+    "04f735c89e29ba05e55f8d0c02981ab349dc1a176e908abcb175358fa976bfe962aaf002462509ebb739b5930261193a83f6ee7dcd5eebb6ac5057a7f67a1480e2": 100,
+    "04b22a8efa5d411d21f969731bd0d9e7c9556ea61f9dcfb6fa962128af9089e3935599a3ee8e5d7277f192cc61aa337ec28fd28dea6b0805897600c6f96a7ee654": 50,
+    "627918ed762db591a2917dcd1b49c884de79866cde9f90cd5b4f7b29c0dc8aae": 75,
 };
 
 app.get("/balance/:address", (req, res) => {
-  const { address } = req.params;
-  const balance = balances[address] || 0;
-  res.send({ balance });
+    const {address} = req.params;
+    const balance = balances[address] || 0;
+    res.send({balance});
 });
 
-app.post("/send", (req, res) => {
-  // Todo: get a signature from the client-side application
-  // recover the public address from its signature
-  
+app.post("/send", async (req, res) => {
+    // Todo: get a signature from the client-side application
+    // recover the public address from its signature
 
-  const { sender, recipient, amount, signature } = req.body;
+    const {sender, recipient, amount, signature, nonce} = req.body;
 
-  setInitialBalance(sender);
-  setInitialBalance(recipient);
-
-  const messageInBytes = utf8ToBytes(message);
-  const messageHash = keccak256(messageInBytes);
-  const formattedSignature = Uint8Array.from(Object.values(signature[0]))
-  const recoveredPublicKey = secp.recoverPublicKey(hash, formattedSignature, signature[1]);
-
-  const recoveredAddress = `0x${toHex(keccak256(recoveredPublicKey.slice(1)).slice(-20))}`;
+    setInitialBalance(sender);
+    setInitialBalance(recipient);
 
 
-  setInitialBalance(recoveredAddress);
-  setInitialBalance(recipient);
+    const [signedtx, recoveryBit] = signature;
 
 
-  const verify = secp.verify(messageHash, formattedSignature, recoveredPublicKey);
-  console.log("Verified: " + verify);
+    const formattedSignature = Uint8Array.from(Object.values(signature));
+    const msgToBytes = utf8ToBytes(recipient + amount + JSON.stringify(nonce));
+    const messageHash = toHex(keccak256(msgToBytes));
 
-  if (!verify) {
-    res.status(400).send({ message: "Verification failed!" });
-  } else if (balances[sender] < amount) {
-    res.status(400).send({ message: "Not enough funds!" });
 
-  } else {
-    balances[sender] -= amount;
-    balances[recipient] += amount;
-    res.send({ balance: balances[sender], message: "Transfer was successful!" });
-  }
+    const recoveredPublicKey = await secp.recoverPublicKey(messageHash, formattedSignature, recoveryBit);
+
+    const verify = secp.verify(formattedSignature, messageHash, recoveryBit);
+    console.log("Verified: " + verify);
+
+    if (!verify) {
+        res.status(400).send({message: "Verification failed!"});
+    } else if (balances[sender] < amount) {
+        res.status(400).send({message: "Not enough funds!"});
+
+    } else if (sender === recipient) {
+        res.status(400).send({message: "Cannot send to yourself! :P"});
+    } else if (recipient && amount) {
+        balances[sender] -= amount;
+        balances[recipient] += amount;
+        res.send({balance: balances[sender], message: "Transfer was successful!"});
+    } else {
+        res.status(400).send({message: "Invalid request!"});
+    }
 
 });
 
 app.listen(port, () => {
-  console.log(`Listening on port ${port}!`);
+    console.log(`Listening on port ${port}!`);
 });
 
 function setInitialBalance(address) {
-  if (!balances[address]) {
-    balances[address] = 0;
-  }
+    if (!balances[address]) {
+        balances[address] = 0;
+    }
 }
